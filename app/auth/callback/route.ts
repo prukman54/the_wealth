@@ -68,36 +68,55 @@ export async function GET(request: NextRequest) {
       emailSignup,
     })
 
-    // Check if user exists in our database
-    console.log("🔍 Checking if user exists in database...")
-    const { data: existingUser, error: fetchError } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", sessionData.user.id)
-      .single()
-
-    // EMAIL SIGNUP VERIFICATION - User already has complete profile
+    // EMAIL SIGNUP VERIFICATION - Create profile from user metadata
     if (emailSignup === "true") {
-      console.log("📧 Email signup verification - user verified their email")
+      console.log("📧 Email signup verification - creating profile from metadata")
 
-      if (existingUser && existingUser.phone_number && existingUser.region) {
-        console.log("✅ Email signup user has complete profile - redirecting to login with success message")
+      // Get user metadata that was stored during signup
+      const fullName = sessionData.user.user_metadata?.full_name || ""
+      const phoneNumber = sessionData.user.user_metadata?.phone_number || ""
+      const region = sessionData.user.user_metadata?.region || ""
+      const email = sessionData.user.email || ""
 
-        // Sign out the user so they need to login with credentials
-        await supabase.auth.signOut()
+      // Check if user already exists
+      const { data: existingUser, error: fetchError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("id", sessionData.user.id)
+        .single()
 
-        const redirectUrl = new URL("/auth/login", requestUrl.origin)
-        redirectUrl.searchParams.set("message", "verified")
-        return NextResponse.redirect(redirectUrl)
-      } else {
-        console.log("⚠️ Email signup user missing profile data - redirecting to login")
+      if (fetchError && fetchError.code === "PGRST116") {
+        // User doesn't exist, create profile
+        console.log("👤 Creating user profile after email verification:", {
+          id: sessionData.user.id,
+          fullName,
+          phoneNumber,
+          region,
+          email,
+        })
 
-        // Sign out the user so they need to login with credentials
-        await supabase.auth.signOut()
+        const { error: insertError } = await supabase.from("users").insert({
+          id: sessionData.user.id,
+          full_name: fullName,
+          phone_number: phoneNumber,
+          email: email,
+          region: region,
+          role: "user",
+        })
 
-        const redirectUrl = new URL("/auth/login", requestUrl.origin)
-        return NextResponse.redirect(redirectUrl)
+        if (insertError) {
+          console.error("❌ Error creating profile after verification:", insertError)
+        } else {
+          console.log("✅ Profile created successfully after verification")
+        }
       }
+
+      // Sign out the user so they need to login with credentials
+      await supabase.auth.signOut()
+
+      const redirectUrl = new URL("/auth/login", requestUrl.origin)
+      redirectUrl.searchParams.set("message", "verified")
+      return NextResponse.redirect(redirectUrl)
     }
 
     // GOOGLE OAUTH FLOW - New or existing Google user
@@ -105,6 +124,12 @@ export async function GET(request: NextRequest) {
       console.log("🔍 Google OAuth flow detected")
 
       // NEW GOOGLE USER - Create basic profile and redirect to complete profile
+      const { data: existingUser, error: fetchError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", sessionData.user.id)
+        .single()
+
       if (fetchError && fetchError.code === "PGRST116") {
         console.log("👤 New Google user - creating basic profile")
 
@@ -164,6 +189,12 @@ export async function GET(request: NextRequest) {
 
     // DIRECT EMAIL/PASSWORD LOGIN (not through verification)
     // This shouldn't happen in normal flow, but handle as fallback
+    const { data: existingUser } = await supabase
+      .from("users")
+      .select("phone_number, region")
+      .eq("id", sessionData.user.id)
+      .single()
+
     if (existingUser && existingUser.phone_number && existingUser.region) {
       console.log("✅ Direct login user with complete profile")
       let finalRedirect = "/dashboard"

@@ -128,6 +128,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
             description: "Invalid admin credentials. Please check your email and password.",
             variant: "destructive",
           })
+          setIsLoading(false)
           return
         }
       }
@@ -148,6 +149,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
             description: "Please create your admin account in Supabase Authentication first.",
             variant: "destructive",
           })
+          setIsLoading(false)
           return
         }
 
@@ -255,7 +257,11 @@ function AuthFormContent({ mode }: AuthFormProps) {
         email: data.email,
         password: data.password,
         options: {
-          data: { full_name: data.fullName },
+          data: {
+            full_name: data.fullName,
+            phone_number: data.phoneNumber,
+            region: data.region,
+          },
           emailRedirectTo: `${window.location.origin}/auth/callback?email_signup=true`,
         },
       })
@@ -268,22 +274,17 @@ function AuthFormContent({ mode }: AuthFormProps) {
       if (authData.user) {
         console.log("✅ User created in Supabase Auth:", authData.user.id)
 
-        // Create complete user profile immediately
-        const { error: profileError } = await supabase.from("users").insert({
-          id: authData.user.id,
-          full_name: data.fullName,
-          phone_number: data.phoneNumber,
-          email: data.email,
-          region: data.region,
-          role: "user",
-        })
-
-        if (profileError) {
-          console.error("❌ Profile creation error:", profileError)
-          throw profileError
-        }
-
-        console.log("✅ Complete user profile created during email signup")
+        // Store signup data in localStorage for later use
+        // This will be used after email verification to create the profile
+        localStorage.setItem(
+          "signupData",
+          JSON.stringify({
+            fullName: data.fullName,
+            phoneNumber: data.phoneNumber,
+            email: data.email,
+            region: data.region,
+          }),
+        )
 
         toast({
           title: "Account created successfully!",
