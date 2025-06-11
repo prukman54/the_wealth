@@ -1,10 +1,10 @@
-import { Suspense } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Mail, CheckCircle, ArrowLeft } from "lucide-react"
+import { Mail, CheckCircle, ArrowLeft, Info } from "lucide-react"
 import Link from "next/link"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
-function VerifyEmailContent() {
+export default function VerifyEmailPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
@@ -21,60 +21,84 @@ function VerifyEmailContent() {
             <div className="mx-auto w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mb-4">
               <Mail className="h-8 w-8 text-blue-600 dark:text-blue-400" />
             </div>
-            <CardTitle className="text-2xl">Check Your Email</CardTitle>
+            <CardTitle className="text-2xl font-bold">Check Your Email</CardTitle>
             <CardDescription className="text-base">
-              We've sent you a verification link to complete your account setup
+              We've sent you a verification link to complete your account setup.
             </CardDescription>
           </CardHeader>
 
           <CardContent className="space-y-6">
-            <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-              <div className="flex items-start gap-3">
-                <CheckCircle className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Important:</strong> After clicking the verification link in your email, please return here and
+                login with your credentials to access your dashboard.
+              </AlertDescription>
+            </Alert>
+
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg">
+                <div className="w-6 h-6 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">1</span>
+                </div>
                 <div>
-                  <p className="font-medium">Account Created Successfully!</p>
-                  <p className="text-sm text-muted-foreground">
-                    Your profile has been set up with all your information
-                  </p>
+                  <p className="font-medium">Check your email inbox</p>
+                  <p className="text-sm text-muted-foreground">Look for an email from The Wealth platform</p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3">
-                <Mail className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg">
+                <div className="w-6 h-6 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-bold text-blue-600 dark:text-blue-400">2</span>
+                </div>
                 <div>
-                  <p className="font-medium">Verification Email Sent</p>
-                  <p className="text-sm text-muted-foreground">
-                    Click the link in your email to verify and start using your account
+                  <p className="font-medium">Click the verification link</p>
+                  <p className="text-sm text-muted-foreground">This will verify your email address</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
+                <div className="w-6 h-6 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-xs font-bold text-green-600 dark:text-green-400">3</span>
+                </div>
+                <div>
+                  <p className="font-medium text-green-800 dark:text-green-200">Login with your credentials</p>
+                  <p className="text-sm text-green-700 dark:text-green-300">
+                    Once verified, return here and login to access your dashboard
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="text-center space-y-4">
-              <div className="text-sm text-muted-foreground">
-                <p>Didn't receive the email? Check your spam folder or</p>
-                <Button variant="link" className="p-0 h-auto text-primary">
-                  resend verification email
-                </Button>
-              </div>
+            <div className="space-y-3">
+              <Button asChild className="w-full h-12">
+                <Link href="/auth/login">
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  I've Verified - Login Now
+                </Link>
+              </Button>
 
-              <div className="pt-4 border-t">
-                <p className="text-xs text-muted-foreground">
-                  Once verified, you'll be taken directly to your dashboard - no additional setup needed!
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">
+                  Didn't receive the email?{" "}
+                  <Link href="/auth/signup" className="text-primary hover:underline">
+                    Try signing up again
+                  </Link>
                 </p>
               </div>
+            </div>
+
+            <div className="text-center text-xs text-muted-foreground border-t pt-4">
+              <p>
+                Having trouble? Check your spam folder or{" "}
+                <Link href="/contact" className="text-primary hover:underline">
+                  contact support
+                </Link>
+              </p>
             </div>
           </CardContent>
         </Card>
       </div>
     </div>
-  )
-}
-
-export default function VerifyEmailPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
-      <VerifyEmailContent />
-    </Suspense>
   )
 }

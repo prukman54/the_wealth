@@ -212,17 +212,15 @@ function AuthFormContent({ mode }: AuthFormProps) {
         return
       }
 
-      // Handle regular user login
+      // Handle regular user login - they should have complete profiles from email signup
       toast({
         title: "Welcome back!",
         description: "Successfully logged in.",
       })
 
-      // Redirect based on profile completion
-      if (!userData?.phone_number || !userData?.region) {
-        console.log("Redirecting to complete profile")
-        router.push("/auth/complete-profile")
-      } else if (returnUrl?.includes("rukman.com.np")) {
+      // For email/password users, profile should already be complete
+      // Redirect directly to dashboard
+      if (returnUrl?.includes("rukman.com.np")) {
         console.log("Redirecting to dashboard with welcome")
         router.push("/dashboard?welcome=true")
       } else {
@@ -244,18 +242,27 @@ function AuthFormContent({ mode }: AuthFormProps) {
   async function handleSignup(data: SignupFormValues) {
     setIsLoading(true)
     try {
+      console.log("📝 Email signup with complete profile data:", {
+        fullName: data.fullName,
+        email: data.email,
+        phoneNumber: data.phoneNumber,
+        region: data.region,
+      })
+
+      // Sign up with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
           data: { full_name: data.fullName },
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: `${window.location.origin}/auth/callback?email_signup=true`,
         },
       })
 
       if (authError) throw authError
 
       if (authData.user) {
+        // Create complete user profile immediately
         const { error: profileError } = await supabase.from("users").insert({
           id: authData.user.id,
           full_name: data.fullName,
@@ -265,17 +272,23 @@ function AuthFormContent({ mode }: AuthFormProps) {
           role: "user",
         })
 
-        if (profileError) throw profileError
+        if (profileError) {
+          console.error("Profile creation error:", profileError)
+          throw profileError
+        }
+
+        console.log("✅ Complete user profile created during email signup")
 
         toast({
           title: "Account created successfully!",
-          description: "Please check your email to verify your account.",
+          description: "Please check your email to verify your account, then login with your credentials.",
         })
 
-        // Redirect to verify email page instead of portal
+        // Redirect to verify email page with instructions to login after verification
         router.push("/auth/verify-email")
       }
     } catch (error: any) {
+      console.error("Signup error:", error)
       toast({
         title: "Signup failed",
         description: error.message || "Please try again",
