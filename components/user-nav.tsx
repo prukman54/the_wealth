@@ -27,8 +27,19 @@ export function UserNav({ user }: UserNavProps) {
   const router = useRouter()
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    router.push("/")
+    try {
+      await supabase.auth.signOut()
+      // Clear any local storage or session data if needed
+      localStorage.clear()
+      sessionStorage.clear()
+      // Redirect to home page
+      router.push("/")
+      router.refresh() // Force a refresh to clear any cached data
+    } catch (error) {
+      console.error("Error signing out:", error)
+      // Even if there's an error, redirect to home
+      router.push("/")
+    }
   }
 
   if (!user) {
