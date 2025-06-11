@@ -268,11 +268,12 @@ function AuthFormContent({ mode }: AuthFormProps) {
         if (profileError) throw profileError
 
         toast({
-          title: "Account created!",
+          title: "Account created successfully!",
           description: "Please check your email to verify your account.",
         })
 
-        router.push("/auth/portal")
+        // Redirect to verify email page instead of portal
+        router.push("/auth/verify-email")
       }
     } catch (error: any) {
       toast({

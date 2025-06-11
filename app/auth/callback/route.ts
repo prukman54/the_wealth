@@ -73,9 +73,9 @@ export async function GET(request: NextRequest) {
       .eq("id", sessionData.user.id)
       .single()
 
-    // NEW USER - Create profile and redirect to complete profile
+    // NEW USER - Check if they already have a complete profile from signup
     if (fetchError && fetchError.code === "PGRST116") {
-      console.log("👤 New Google user detected - creating basic profile")
+      console.log("👤 User verified email but no profile found - this shouldn't happen for signup users")
 
       const fullName =
         sessionData.user.user_metadata?.full_name ||
@@ -84,44 +84,40 @@ export async function GET(request: NextRequest) {
         ""
       const email = sessionData.user.email || ""
 
-      console.log("📝 Creating user profile with Google data:", {
-        fullName,
-        email,
-        provider: sessionData.user.app_metadata?.provider,
-      })
-
+      // Create basic profile for Google OAuth users (they need to complete profile)
       const { error: insertError } = await supabase.from("users").insert({
         id: sessionData.user.id,
         full_name: fullName,
         email: email,
-        phone_number: "", // Will be completed in profile setup
-        region: "", // Will be selected in profile setup
-        role: "user", // Google users are always regular users
+        phone_number: "", // Empty for Google users - they need to complete
+        region: "", // Empty for Google users - they need to complete
+        role: "user",
       })
 
       if (insertError) {
         console.error("❌ Error creating user profile:", insertError)
-      } else {
-        console.log("✅ User profile created successfully")
       }
 
-      // Always redirect new Google users to complete profile
+      // Only Google OAuth users should go to complete profile
+      // Email signup users should already have complete profiles
       const redirectUrl = new URL("/auth/complete-profile", requestUrl.origin)
-      console.log("🔄 Redirecting new Google user to complete profile")
+      console.log("🔄 Redirecting to complete profile")
       return NextResponse.redirect(redirectUrl)
     }
 
     // EXISTING USER - Check profile completion and redirect accordingly
     if (existingUser) {
-      console.log("👤 Existing Google user found:", {
+      console.log("👤 Existing user found:", {
         email: existingUser.email,
         hasPhone: !!existingUser.phone_number,
         hasRegion: !!existingUser.region,
         role: existingUser.role,
       })
 
-      // Check if profile needs completion
-      if (!existingUser.phone_number || !existingUser.region) {
+      // Check if profile is complete (has both phone and region)
+      const isProfileComplete = existingUser.phone_number && existingUser.region
+
+      if (!isProfileComplete) {
         console.log("⚠️ Profile incomplete - redirecting to complete profile")
         const redirectUrl = new URL("/auth/complete-profile", requestUrl.origin)
         return NextResponse.redirect(redirectUrl)
@@ -135,7 +131,7 @@ export async function GET(request: NextRequest) {
       }
 
       const redirectUrl = new URL(finalRedirect, requestUrl.origin)
-      console.log("✅ Redirecting existing Google user to:", finalRedirect)
+      console.log("✅ Redirecting user with complete profile to:", finalRedirect)
       return NextResponse.redirect(redirectUrl)
     }
 
