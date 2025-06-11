@@ -78,15 +78,23 @@ export async function GET(request: NextRequest) {
 
     // EMAIL SIGNUP VERIFICATION - User already has complete profile
     if (emailSignup === "true") {
-      console.log("📧 Email signup verification - checking existing profile")
+      console.log("📧 Email signup verification - user verified their email")
 
       if (existingUser && existingUser.phone_number && existingUser.region) {
-        console.log("✅ Email signup user has complete profile - redirecting to login page")
+        console.log("✅ Email signup user has complete profile - redirecting to login with success message")
+
+        // Sign out the user so they need to login with credentials
+        await supabase.auth.signOut()
+
         const redirectUrl = new URL("/auth/login", requestUrl.origin)
         redirectUrl.searchParams.set("message", "verified")
         return NextResponse.redirect(redirectUrl)
       } else {
-        console.log("⚠️ Email signup user missing profile data - this shouldn't happen")
+        console.log("⚠️ Email signup user missing profile data - redirecting to login")
+
+        // Sign out the user so they need to login with credentials
+        await supabase.auth.signOut()
+
         const redirectUrl = new URL("/auth/login", requestUrl.origin)
         return NextResponse.redirect(redirectUrl)
       }

@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { useSupabase } from "@/lib/supabase-provider"
-import { Loader2, AlertCircle, Eye, EyeOff, ArrowLeft, Shield } from "lucide-react"
+import { Loader2, AlertCircle, Eye, EyeOff, ArrowLeft, Shield, CheckCircle } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
 
@@ -55,6 +55,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
 
   const returnUrl = searchParams.get("return")
   const error = searchParams.get("error")
+  const message = searchParams.get("message")
 
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -242,7 +243,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
   async function handleSignup(data: SignupFormValues) {
     setIsLoading(true)
     try {
-      console.log("📝 Email signup with complete profile data:", {
+      console.log("📝 Starting email signup with complete profile data:", {
         fullName: data.fullName,
         email: data.email,
         phoneNumber: data.phoneNumber,
@@ -259,9 +260,14 @@ function AuthFormContent({ mode }: AuthFormProps) {
         },
       })
 
-      if (authError) throw authError
+      if (authError) {
+        console.error("Supabase auth error:", authError)
+        throw authError
+      }
 
       if (authData.user) {
+        console.log("✅ User created in Supabase Auth:", authData.user.id)
+
         // Create complete user profile immediately
         const { error: profileError } = await supabase.from("users").insert({
           id: authData.user.id,
@@ -273,7 +279,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
         })
 
         if (profileError) {
-          console.error("Profile creation error:", profileError)
+          console.error("❌ Profile creation error:", profileError)
           throw profileError
         }
 
@@ -285,10 +291,11 @@ function AuthFormContent({ mode }: AuthFormProps) {
         })
 
         // Redirect to verify email page with instructions to login after verification
+        console.log("🔄 Redirecting to verify-email page")
         router.push("/auth/verify-email")
       }
     } catch (error: any) {
-      console.error("Signup error:", error)
+      console.error("❌ Signup error:", error)
       toast({
         title: "Signup failed",
         description: error.message || "Please try again",
@@ -307,6 +314,13 @@ function AuthFormContent({ mode }: AuthFormProps) {
       no_code: "Authentication was incomplete. Please try again.",
     }
     return messages[errorCode as keyof typeof messages] || "An error occurred. Please try again."
+  }
+
+  const getSuccessMessage = (messageCode: string) => {
+    const messages = {
+      verified: "Email verified successfully! You can now login with your credentials.",
+    }
+    return messages[messageCode as keyof typeof messages] || ""
   }
 
   // Show Google button only for user signup and user login (not admin)
@@ -343,7 +357,18 @@ function AuthFormContent({ mode }: AuthFormProps) {
           </CardHeader>
 
           <CardContent className="space-y-6">
-            {error && (
+            {/* Success Message */}
+            {message && (
+              <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-green-800 dark:text-green-200">
+                  {getSuccessMessage(message)}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Error Message - Only show for relevant errors */}
+            {error && authMode === "user" && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{getErrorMessage(error)}</AlertDescription>
