@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { Loader2, CheckCircle, User, Phone, Globe } from "lucide-react"
+import { Loader2, CheckCircle, User, Phone, Globe, Sparkles } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { completeProfile } from "@/app/actions/complete-profile"
 
@@ -89,12 +89,20 @@ export function CompleteProfileForm() {
       console.log("✅ Profile completed successfully")
 
       toast({
-        title: "Profile completed!",
+        title: "Profile completed! 🎉",
         description: "Welcome to The Wealth platform. Let's start building your financial future!",
       })
 
-      // Redirect to dashboard
-      router.push("/dashboard?welcome=true&new=true")
+      // Check if user is admin
+      const isAdmin = user.email === "prukman54@gmail.com"
+
+      if (isAdmin) {
+        console.log("👑 Admin user - redirecting to admin dashboard")
+        router.push("/admin/dashboard")
+      } else {
+        console.log("👤 Regular user - redirecting to dashboard")
+        router.push("/dashboard?welcome=true&new=true")
+      }
     } catch (error: any) {
       console.error("❌ Profile completion error:", error)
       toast({
@@ -133,16 +141,20 @@ export function CompleteProfileForm() {
   }
 
   const userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "there"
+  const isAdmin = user.email === "prukman54@gmail.com"
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         {/* Progress indicator */}
         <div className="text-center space-y-2">
-          <h1 className="text-2xl font-bold">Almost there!</h1>
-          <p className="text-muted-foreground">Just 2 more details to complete your profile</p>
-          <Progress value={66} className="w-full" />
-          <p className="text-xs text-muted-foreground">Step 2 of 3</p>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <Sparkles className="h-5 w-5 text-blue-600" />
+            <h1 className="text-2xl font-bold">Almost there!</h1>
+          </div>
+          <p className="text-muted-foreground">We just need a little more info to complete your profile</p>
+          <Progress value={75} className="w-full" />
+          <p className="text-xs text-muted-foreground">Step 2 of 2</p>
         </div>
 
         <Card className="border-0 shadow-xl">
@@ -152,7 +164,11 @@ export function CompleteProfileForm() {
             </div>
             <CardTitle className="text-xl">Complete Your Profile</CardTitle>
             <CardDescription>
-              Welcome {userName}! We need a couple more details to personalize your experience.
+              {isAdmin ? (
+                <>Welcome Admin {userName}! Please complete your profile to access the admin dashboard.</>
+              ) : (
+                <>Welcome {userName}! We need a couple more details to personalize your experience.</>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -163,7 +179,9 @@ export function CompleteProfileForm() {
                   <User className="h-4 w-4 text-muted-foreground" />
                   <div>
                     <p className="text-sm font-medium">{userName}</p>
-                    <p className="text-xs text-muted-foreground">From Google Account</p>
+                    <p className="text-xs text-muted-foreground">
+                      {user.app_metadata?.provider === "google" ? "From Google Account" : "Email Account"}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -173,6 +191,15 @@ export function CompleteProfileForm() {
                     <p className="text-xs text-muted-foreground">Email verified</p>
                   </div>
                 </div>
+                {isAdmin && (
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="h-4 w-4 text-blue-600" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-600">Admin Account</p>
+                      <p className="text-xs text-muted-foreground">Administrative privileges</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Phone number input */}
@@ -227,7 +254,7 @@ export function CompleteProfileForm() {
 
               <Button disabled={isLoading} type="submit" className="w-full h-12 text-base">
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Complete Profile & Continue
+                {isAdmin ? "Complete Profile & Access Admin Dashboard" : "Complete Profile & Continue"}
               </Button>
             </form>
           </CardContent>

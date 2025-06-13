@@ -36,11 +36,23 @@ export async function middleware(req: NextRequest) {
       }
 
       // Check admin role
-      const { data: userData } = await supabase.from("users").select("role").eq("id", session.user.id).single()
+      const { data: userData } = await supabase
+        .from("users")
+        .select("role, phone_number, region")
+        .eq("id", session.user.id)
+        .single()
 
       if (userData?.role !== "admin") {
         const redirectUrl = req.nextUrl.clone()
         redirectUrl.pathname = "/dashboard"
+        return NextResponse.redirect(redirectUrl)
+      }
+
+      // Check if admin profile is complete
+      if (!userData?.phone_number || !userData?.region) {
+        console.log("👑 Admin profile incomplete - redirecting to complete profile")
+        const redirectUrl = req.nextUrl.clone()
+        redirectUrl.pathname = "/auth/complete-profile"
         return NextResponse.redirect(redirectUrl)
       }
     }
@@ -54,22 +66,16 @@ export async function middleware(req: NextRequest) {
         return NextResponse.redirect(redirectUrl)
       }
 
-      // Get user data to check role and profile completion
+      // Get user data to check profile completion
       const { data: userData } = await supabase
         .from("users")
         .select("phone_number, region, role")
         .eq("id", session.user.id)
         .single()
 
-      // SKIP profile completion check for admin users
-      if (userData?.role === "admin") {
-        console.log("👑 Admin user - skipping profile completion check")
-        return res
-      }
-
-      // Only check profile completion for regular users
+      // Check profile completion for ALL users (including admin when accessing dashboard)
       if (!userData?.phone_number || !userData?.region) {
-        console.log("🔄 Middleware: Incomplete profile detected for regular user, redirecting to complete profile")
+        console.log("🔄 Middleware: Incomplete profile detected, redirecting to complete profile")
         const redirectUrl = req.nextUrl.clone()
         redirectUrl.pathname = "/auth/complete-profile"
         return NextResponse.redirect(redirectUrl)
@@ -91,20 +97,19 @@ export async function middleware(req: NextRequest) {
 
       const redirectUrl = req.nextUrl.clone()
 
-      // Admin users go directly to admin dashboard
-      if (userData?.role === "admin") {
-        redirectUrl.pathname = "/admin/dashboard"
-        return NextResponse.redirect(redirectUrl)
-      }
-
-      // Check if regular user profile is incomplete
+      // Check if profile is incomplete
       if (!userData?.phone_number || !userData?.region) {
         redirectUrl.pathname = "/auth/complete-profile"
         return NextResponse.redirect(redirectUrl)
       }
 
-      // Profile is complete, redirect to dashboard
-      redirectUrl.pathname = "/dashboard"
+      // Profile is complete - redirect to appropriate dashboard
+      if (userData?.role === "admin") {
+        redirectUrl.pathname = "/admin/dashboard"
+      } else {
+        redirectUrl.pathname = "/dashboard"
+      }
+
       return NextResponse.redirect(redirectUrl)
     }
 

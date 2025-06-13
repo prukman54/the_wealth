@@ -68,9 +68,9 @@ export async function GET(request: NextRequest) {
       emailSignup,
     })
 
-    // EMAIL SIGNUP VERIFICATION - Create profile from user metadata
+    // EMAIL SIGNUP VERIFICATION - Create complete profile from metadata
     if (emailSignup === "true") {
-      console.log("📧 Email signup verification - creating profile from metadata")
+      console.log("📧 Email signup verification - creating complete profile from metadata")
 
       // Get user metadata that was stored during signup
       const fullName = sessionData.user.user_metadata?.full_name || ""
@@ -86,8 +86,8 @@ export async function GET(request: NextRequest) {
         .single()
 
       if (fetchError && fetchError.code === "PGRST116") {
-        // User doesn't exist, create profile
-        console.log("👤 Creating user profile after email verification:", {
+        // User doesn't exist, create complete profile
+        console.log("👤 Creating complete user profile after email verification:", {
           id: sessionData.user.id,
           fullName,
           phoneNumber,
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
         if (insertError) {
           console.error("❌ Error creating profile after verification:", insertError)
         } else {
-          console.log("✅ Profile created successfully after verification")
+          console.log("✅ Complete profile created successfully after verification")
         }
       }
 
@@ -119,11 +119,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(redirectUrl)
     }
 
-    // GOOGLE OAUTH FLOW - New or existing Google user
+    // GOOGLE OAUTH FLOW - Handle Google sign-in
     if (sessionData.user.app_metadata?.provider === "google") {
       console.log("🔍 Google OAuth flow detected")
 
-      // NEW GOOGLE USER - Create basic profile and redirect to complete profile
+      const isAdmin = sessionData.user.email === "prukman54@gmail.com"
+      console.log("👑 Admin check:", { email: sessionData.user.email, isAdmin })
+
+      // Check if user exists in database
       const { data: existingUser, error: fetchError } = await supabase
         .from("users")
         .select("*")
@@ -131,6 +134,7 @@ export async function GET(request: NextRequest) {
         .single()
 
       if (fetchError && fetchError.code === "PGRST116") {
+        // NEW GOOGLE USER - Create basic profile
         console.log("👤 New Google user - creating basic profile")
 
         const fullName =
@@ -146,14 +150,14 @@ export async function GET(request: NextRequest) {
           email: email,
           phone_number: "", // Empty - needs to be completed
           region: "", // Empty - needs to be completed
-          role: "user",
+          role: isAdmin ? "admin" : "user",
         })
 
         if (insertError) {
           console.error("❌ Error creating Google user profile:", insertError)
         }
 
-        // Redirect to complete profile for Google users
+        // Redirect to complete profile for all new Google users
         const redirectUrl = new URL("/auth/complete-profile", requestUrl.origin)
         console.log("🔄 Redirecting new Google user to complete profile")
         return NextResponse.redirect(redirectUrl)
@@ -165,7 +169,14 @@ export async function GET(request: NextRequest) {
           email: existingUser.email,
           hasPhone: !!existingUser.phone_number,
           hasRegion: !!existingUser.region,
+          role: existingUser.role,
         })
+
+        // Update role if this is admin user
+        if (isAdmin && existingUser.role !== "admin") {
+          console.log("👑 Updating user role to admin")
+          await supabase.from("users").update({ role: "admin" }).eq("id", sessionData.user.id)
+        }
 
         // Check if profile needs completion
         if (!existingUser.phone_number || !existingUser.region) {
@@ -174,9 +185,9 @@ export async function GET(request: NextRequest) {
           return NextResponse.redirect(redirectUrl)
         }
 
-        // Profile is complete - go to dashboard
-        let finalRedirect = "/dashboard"
-        if (returnUrl && returnUrl.includes("rukman.com.np")) {
+        // Profile is complete - redirect to appropriate dashboard
+        let finalRedirect = isAdmin ? "/admin/dashboard" : "/dashboard"
+        if (!isAdmin && returnUrl && returnUrl.includes("rukman.com.np")) {
           finalRedirect = "/dashboard?welcome=true"
           console.log("🔗 External referral - redirecting with welcome")
         }
@@ -191,14 +202,15 @@ export async function GET(request: NextRequest) {
     // This shouldn't happen in normal flow, but handle as fallback
     const { data: existingUser } = await supabase
       .from("users")
-      .select("phone_number, region")
+      .select("phone_number, region, role")
       .eq("id", sessionData.user.id)
       .single()
 
     if (existingUser && existingUser.phone_number && existingUser.region) {
       console.log("✅ Direct login user with complete profile")
-      let finalRedirect = "/dashboard"
-      if (returnUrl && returnUrl.includes("rukman.com.np")) {
+      const isAdmin = existingUser.role === "admin"
+      let finalRedirect = isAdmin ? "/admin/dashboard" : "/dashboard"
+      if (!isAdmin && returnUrl && returnUrl.includes("rukman.com.np")) {
         finalRedirect = "/dashboard?welcome=true"
       }
       const redirectUrl = new URL(finalRedirect, requestUrl.origin)

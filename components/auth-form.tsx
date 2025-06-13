@@ -14,7 +14,19 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { useSupabase } from "@/lib/supabase-provider"
-import { Loader2, AlertCircle, Eye, EyeOff, ArrowLeft, Shield, CheckCircle } from "lucide-react"
+import {
+  Loader2,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  ArrowLeft,
+  Shield,
+  CheckCircle,
+  User,
+  Phone,
+  Globe,
+  Mail,
+} from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import Link from "next/link"
 
@@ -26,9 +38,9 @@ const loginSchema = z.object({
 
 const signupSchema = z.object({
   fullName: z.string().min(2, { message: "Full name must be at least 2 characters" }),
-  phoneNumber: z.string().min(10, { message: "Please enter a valid phone number" }),
   email: z.string().email({ message: "Please enter a valid email address" }),
-  password: z.string().min(6, { message: "Password must be at least 6 characters" }),
+  password: z.string().min(8, { message: "Password must be at least 8 characters" }),
+  phoneNumber: z.string().min(10, { message: "Please enter a valid phone number (minimum 10 digits)" }),
   region: z.string().min(1, { message: "Please select your region" }),
 })
 
@@ -39,7 +51,7 @@ interface AuthFormProps {
   mode: "login" | "signup"
 }
 
-// Admin credentials - EXACT match required
+// Admin credentials
 const ADMIN_EMAIL = "prukman54@gmail.com"
 const ADMIN_PASSWORD = "$$1M_BTC$$"
 
@@ -66,9 +78,9 @@ function AuthFormContent({ mode }: AuthFormProps) {
     resolver: zodResolver(signupSchema),
     defaultValues: {
       fullName: "",
-      phoneNumber: "",
       email: "",
       password: "",
+      phoneNumber: "",
       region: "",
     },
   })
@@ -107,22 +119,11 @@ function AuthFormContent({ mode }: AuthFormProps) {
     setIsLoading(true)
 
     try {
-      console.log("Login attempt:", {
-        email: data.email,
-        authMode,
-        isAdminEmail: data.email === ADMIN_EMAIL,
-        isAdminPassword: data.password === ADMIN_PASSWORD,
-      })
+      console.log("🔐 Login attempt:", { email: data.email, authMode })
 
-      // Check if this is an admin login attempt
-      const isAdminLogin = authMode === "admin" && data.email.trim() === ADMIN_EMAIL && data.password === ADMIN_PASSWORD
-
-      console.log("Admin login check:", { isAdminLogin, authMode })
-
-      // For admin login, validate credentials first
+      // Admin login validation
       if (authMode === "admin") {
-        if (!isAdminLogin) {
-          console.log("Invalid admin credentials")
+        if (data.email.trim() !== ADMIN_EMAIL || data.password !== ADMIN_PASSWORD) {
           toast({
             title: "Access denied",
             description: "Invalid admin credentials. Please check your email and password.",
@@ -131,67 +132,92 @@ function AuthFormContent({ mode }: AuthFormProps) {
           setIsLoading(false)
           return
         }
-      }
 
-      // Authenticate with Supabase
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password,
-      })
+        // Check if admin exists in Supabase Auth
+        const { data: authData, error: checkError } = await supabase.auth.signInWithPassword({
+          email: data.email,
+          password: data.password,
+        })
 
-      if (authError) {
-        console.error("Supabase auth error:", authError)
+        // If admin doesn't exist in Supabase Auth, create the account
+        if (checkError && checkError.message.includes("Invalid login credentials")) {
+          console.log("Admin account doesn't exist in Supabase Auth. Creating account...")
 
-        // Special handling for admin account that doesn't exist in Supabase
-        if (isAdminLogin && authError.message.includes("Invalid login credentials")) {
+          // Create admin account in Supabase Auth
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email: data.email,
+            password: data.password,
+            options: {
+              data: {
+                full_name: "Admin User",
+                role: "admin",
+              },
+            },
+          })
+
+          if (signUpError) {
+            console.error("Failed to create admin account:", signUpError)
+            toast({
+              title: "Admin Setup Failed",
+              description: "Could not create admin account. Please contact support.",
+              variant: "destructive",
+            })
+            setIsLoading(false)
+            return
+          }
+
+          // If admin was created successfully, try to sign in
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: data.email,
+            password: data.password,
+          })
+
+          if (signInError) {
+            console.error("Failed to sign in as admin:", signInError)
+            toast({
+              title: "Admin Login Failed",
+              description: "Admin account created but login failed. Please try again.",
+              variant: "destructive",
+            })
+            setIsLoading(false)
+            return
+          }
+        } else if (checkError) {
+          // Some other error occurred
+          console.error("Admin login error:", checkError)
           toast({
-            title: "Admin Account Setup Required",
-            description: "Please create your admin account in Supabase Authentication first.",
+            title: "Login Failed",
+            description: checkError.message,
             variant: "destructive",
           })
           setIsLoading(false)
           return
         }
 
-        throw authError
-      }
+        console.log("✅ Admin authentication successful")
 
-      console.log("Supabase auth successful")
+        // Check if admin profile exists in users table
+        const { data: userData, error: userError } = await supabase
+          .from("users")
+          .select("role, phone_number, region, full_name")
+          .eq("email", data.email)
+          .single()
 
-      // Check user role in database
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("role, phone_number, full_name, region")
-        .eq("email", data.email)
-        .single()
-
-      console.log("User data from database:", userData, userError)
-
-      // Handle admin login
-      if (authMode === "admin") {
-        // If user doesn't exist in users table, create admin profile
+        // Create or update admin profile if needed
         if (userError && userError.code === "PGRST116") {
-          console.log("Creating admin user profile")
           const { data: authUser } = await supabase.auth.getUser()
           if (authUser.user) {
-            const { error: createError } = await supabase.from("users").insert({
+            await supabase.from("users").insert({
               id: authUser.user.id,
               full_name: "Admin User",
               email: data.email,
-              phone_number: "+977-9846965033", // Admin phone
-              region: "np", // Admin region
+              phone_number: "+977-9846965033",
+              region: "np",
               role: "admin",
             })
-
-            if (createError) {
-              console.error("Error creating admin profile:", createError)
-              throw createError
-            }
           }
         } else if (userData?.role !== "admin") {
-          // Update existing user to admin role
-          console.log("Updating user role to admin")
-          const { error: updateError } = await supabase
+          await supabase
             .from("users")
             .update({
               role: "admin",
@@ -199,39 +225,54 @@ function AuthFormContent({ mode }: AuthFormProps) {
               region: "np",
             })
             .eq("email", data.email)
-
-          if (updateError) {
-            console.error("Error updating user role:", updateError)
-          }
         }
 
         toast({
           title: "Welcome back, Admin!",
           description: "Successfully logged in to admin dashboard.",
         })
-
-        console.log("Redirecting to admin dashboard")
         router.push("/admin/dashboard")
         return
       }
 
-      // Handle regular user login - they should have complete profiles from email signup
+      // Regular user login
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
+      })
+
+      if (authError) {
+        console.error("❌ Supabase auth error:", authError)
+        throw authError
+      }
+
+      console.log("✅ Authentication successful")
+
+      // Check user profile in database
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("role, phone_number, region, full_name")
+        .eq("email", data.email)
+        .single()
+
+      // Handle regular user login
       toast({
         title: "Welcome back!",
         description: "Successfully logged in.",
       })
 
-      // For email/password users, profile should already be complete
-      // Redirect directly to dashboard
-      if (returnUrl?.includes("rukman.com.np")) {
-        console.log("Redirecting to dashboard with welcome")
-        router.push("/dashboard?welcome=true")
-      } else {
-        console.log("Redirecting to dashboard")
-        router.push("/dashboard")
+      // Check if profile is complete
+      if (!userData?.phone_number || !userData?.region) {
+        console.log("⚠️ Incomplete profile detected, redirecting to complete profile")
+        router.push("/auth/complete-profile")
+        return
       }
+
+      // Profile is complete, redirect to dashboard
+      const destination = returnUrl?.includes("rukman.com.np") ? "/dashboard?welcome=true" : "/dashboard"
+      router.push(destination)
     } catch (error: any) {
-      console.error("Login error:", error)
+      console.error("❌ Login error:", error)
       toast({
         title: "Login failed",
         description: error.message || "Please check your credentials",
@@ -245,7 +286,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
   async function handleSignup(data: SignupFormValues) {
     setIsLoading(true)
     try {
-      console.log("📝 Starting email signup with complete profile data:", {
+      console.log("📝 Starting complete email signup:", {
         fullName: data.fullName,
         email: data.email,
         phoneNumber: data.phoneNumber,
@@ -267,32 +308,19 @@ function AuthFormContent({ mode }: AuthFormProps) {
       })
 
       if (authError) {
-        console.error("Supabase auth error:", authError)
+        console.error("❌ Supabase auth error:", authError)
         throw authError
       }
 
       if (authData.user) {
         console.log("✅ User created in Supabase Auth:", authData.user.id)
 
-        // Store signup data in localStorage for later use
-        // This will be used after email verification to create the profile
-        localStorage.setItem(
-          "signupData",
-          JSON.stringify({
-            fullName: data.fullName,
-            phoneNumber: data.phoneNumber,
-            email: data.email,
-            region: data.region,
-          }),
-        )
-
         toast({
-          title: "Account created successfully!",
+          title: "Account created successfully! 🎉",
           description: "Please check your email to verify your account, then login with your credentials.",
         })
 
-        // Redirect to verify email page with instructions to login after verification
-        console.log("🔄 Redirecting to verify-email page")
+        // Redirect to verify email page
         router.push("/auth/verify-email")
       }
     } catch (error: any) {
@@ -320,6 +348,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
   const getSuccessMessage = (messageCode: string) => {
     const messages = {
       verified: "Email verified successfully! You can now login with your credentials.",
+      profile_completed: "Profile completed successfully! Welcome to The Wealth platform.",
     }
     return messages[messageCode as keyof typeof messages] || ""
   }
@@ -329,7 +358,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-6">
+      <div className="w-full max-w-lg space-y-6">
         {/* Back Button */}
         <Button variant="ghost" asChild className="self-start">
           <Link href="/" className="flex items-center gap-2 text-muted-foreground hover:text-foreground">
@@ -340,8 +369,10 @@ function AuthFormContent({ mode }: AuthFormProps) {
 
         <Card className="border-0 shadow-2xl bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
           <CardHeader className="space-y-2 text-center pb-6">
-            <CardTitle className="text-2xl font-bold">{mode === "login" ? "Welcome back" : "Create account"}</CardTitle>
-            <CardDescription className="text-base">
+            <CardTitle className="text-2xl font-bold text-foreground">
+              {mode === "login" ? "Welcome back" : "Join The Wealth"}
+            </CardTitle>
+            <CardDescription className="text-base text-muted-foreground dark:text-gray-300">
               {returnUrl?.includes("rukman.com.np") ? (
                 <>
                   Welcome from Rukman Puri's website!{" "}
@@ -352,7 +383,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
               ) : mode === "login" ? (
                 "Enter your credentials to access your account"
               ) : (
-                "Enter your information to create your account"
+                "Create your account and start building wealth today"
               )}
             </CardDescription>
           </CardHeader>
@@ -361,14 +392,14 @@ function AuthFormContent({ mode }: AuthFormProps) {
             {/* Success Message */}
             {message && (
               <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-                <CheckCircle className="h-4 w-4 text-green-600" />
+                <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
                 <AlertDescription className="text-green-800 dark:text-green-200">
                   {getSuccessMessage(message)}
                 </AlertDescription>
               </Alert>
             )}
 
-            {/* Error Message - Only show for relevant errors */}
+            {/* Error Message */}
             {error && authMode === "user" && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
@@ -396,7 +427,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
                   variant="outline"
                   type="button"
                   disabled={isLoading || isGoogleLoading}
-                  className="w-full h-12 text-base border-2 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  className="w-full h-12 text-base border-2 hover:bg-gray-50 dark:hover:bg-gray-800 dark:text-white dark:border-gray-700"
                   onClick={handleGoogleAuth}
                 >
                   {isGoogleLoading ? (
@@ -426,10 +457,12 @@ function AuthFormContent({ mode }: AuthFormProps) {
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
+                    <span className="w-full border-t dark:border-gray-700" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+                    <span className="bg-background px-2 text-muted-foreground dark:text-gray-400">
+                      Or continue with email
+                    </span>
                   </div>
                 </div>
               </>
@@ -439,19 +472,16 @@ function AuthFormContent({ mode }: AuthFormProps) {
               <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
                 {authMode === "admin" && (
                   <Alert className="border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950">
-                    <Shield className="h-4 w-4 text-orange-600" />
+                    <Shield className="h-4 w-4 text-orange-600 dark:text-orange-400" />
                     <AlertDescription className="text-orange-800 dark:text-orange-200">
                       <strong>Admin Access:</strong> Use your designated admin credentials
-                      <br />
-                      <span className="text-sm">Email: {ADMIN_EMAIL}</span>
-                      <br />
-                      <span className="text-sm">Password: {ADMIN_PASSWORD}</span>
                     </AlertDescription>
                   </Alert>
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-sm font-medium">
+                  <Label htmlFor="email" className="text-sm font-medium flex items-center gap-2 text-foreground">
+                    <Mail className="h-4 w-4" />
                     Email
                   </Label>
                   <Input
@@ -459,17 +489,17 @@ function AuthFormContent({ mode }: AuthFormProps) {
                     type="email"
                     placeholder={authMode === "admin" ? ADMIN_EMAIL : "name@example.com"}
                     disabled={isLoading}
-                    className="h-12"
+                    className="h-12 dark:text-white dark:bg-gray-800 dark:border-gray-700 dark:placeholder:text-gray-400"
                     {...loginForm.register("email")}
                   />
                   {loginForm.formState.errors.email && (
-                    <p className="text-sm text-red-500">{loginForm.formState.errors.email.message}</p>
+                    <p className="text-sm text-red-500 dark:text-red-400">{loginForm.formState.errors.email.message}</p>
                   )}
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="password" className="text-sm font-medium">
+                    <Label htmlFor="password" className="text-sm font-medium text-foreground">
                       Password
                     </Label>
                     {authMode === "user" && (
@@ -482,23 +512,25 @@ function AuthFormContent({ mode }: AuthFormProps) {
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
-                      placeholder={authMode === "admin" ? "Enter admin password" : "Your password"}
+                      placeholder="Your password"
                       disabled={isLoading}
-                      className="h-12 pr-12"
+                      className="h-12 pr-12 dark:text-white dark:bg-gray-800 dark:border-gray-700 dark:placeholder:text-gray-400"
                       {...loginForm.register("password")}
                     />
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="absolute right-0 top-0 h-12 px-3 hover:bg-transparent"
+                      className="absolute right-0 top-0 h-12 px-3 hover:bg-transparent dark:text-gray-300"
                       onClick={() => setShowPassword(!showPassword)}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
                   {loginForm.formState.errors.password && (
-                    <p className="text-sm text-red-500">{loginForm.formState.errors.password.message}</p>
+                    <p className="text-sm text-red-500 dark:text-red-400">
+                      {loginForm.formState.errors.password.message}
+                    </p>
                   )}
                 </div>
 
@@ -516,42 +548,28 @@ function AuthFormContent({ mode }: AuthFormProps) {
               </form>
             ) : (
               <form onSubmit={signupForm.handleSubmit(handleSignup)} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName" className="text-sm font-medium">
-                      Full Name *
-                    </Label>
-                    <Input
-                      id="fullName"
-                      placeholder="Enter your full name"
-                      disabled={isLoading}
-                      className="h-12"
-                      {...signupForm.register("fullName")}
-                    />
-                    {signupForm.formState.errors.fullName && (
-                      <p className="text-sm text-red-500">{signupForm.formState.errors.fullName.message}</p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="phoneNumber" className="text-sm font-medium">
-                      Phone Number *
-                    </Label>
-                    <Input
-                      id="phoneNumber"
-                      placeholder="+977-9800000000"
-                      disabled={isLoading}
-                      className="h-12"
-                      {...signupForm.register("phoneNumber")}
-                    />
-                    {signupForm.formState.errors.phoneNumber && (
-                      <p className="text-sm text-red-500">{signupForm.formState.errors.phoneNumber.message}</p>
-                    )}
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fullName" className="text-sm font-medium flex items-center gap-2 text-foreground">
+                    <User className="h-4 w-4" />
+                    Full Name *
+                  </Label>
+                  <Input
+                    id="fullName"
+                    placeholder="Enter your full name"
+                    disabled={isLoading}
+                    className="h-12 dark:text-white dark:bg-gray-800 dark:border-gray-700 dark:placeholder:text-gray-400"
+                    {...signupForm.register("fullName")}
+                  />
+                  {signupForm.formState.errors.fullName && (
+                    <p className="text-sm text-red-500 dark:text-red-400">
+                      {signupForm.formState.errors.fullName.message}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-sm font-medium">
+                  <Label htmlFor="email" className="text-sm font-medium flex items-center gap-2 text-foreground">
+                    <Mail className="h-4 w-4" />
                     Email *
                   </Label>
                   <Input
@@ -559,64 +577,96 @@ function AuthFormContent({ mode }: AuthFormProps) {
                     type="email"
                     placeholder="name@example.com"
                     disabled={isLoading}
-                    className="h-12"
+                    className="h-12 dark:text-white dark:bg-gray-800 dark:border-gray-700 dark:placeholder:text-gray-400"
                     {...signupForm.register("email")}
                   />
                   {signupForm.formState.errors.email && (
-                    <p className="text-sm text-red-500">{signupForm.formState.errors.email.message}</p>
+                    <p className="text-sm text-red-500 dark:text-red-400">
+                      {signupForm.formState.errors.email.message}
+                    </p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password" className="text-sm font-medium">
+                  <Label htmlFor="password" className="text-sm font-medium text-foreground">
                     Password *
                   </Label>
                   <div className="relative">
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
-                      placeholder="Create a strong password"
+                      placeholder="Create a strong password (min 8 characters)"
                       disabled={isLoading}
-                      className="h-12 pr-12"
+                      className="h-12 pr-12 dark:text-white dark:bg-gray-800 dark:border-gray-700 dark:placeholder:text-gray-400"
                       {...signupForm.register("password")}
                     />
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="absolute right-0 top-0 h-12 px-3 hover:bg-transparent"
+                      className="absolute right-0 top-0 h-12 px-3 hover:bg-transparent dark:text-gray-300"
                       onClick={() => setShowPassword(!showPassword)}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
                   {signupForm.formState.errors.password && (
-                    <p className="text-sm text-red-500">{signupForm.formState.errors.password.message}</p>
+                    <p className="text-sm text-red-500 dark:text-red-400">
+                      {signupForm.formState.errors.password.message}
+                    </p>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="region" className="text-sm font-medium">
-                    Region *
+                  <Label htmlFor="phoneNumber" className="text-sm font-medium flex items-center gap-2 text-foreground">
+                    <Phone className="h-4 w-4" />
+                    Phone Number *
+                  </Label>
+                  <Input
+                    id="phoneNumber"
+                    placeholder="+977-9800000000"
+                    disabled={isLoading}
+                    className="h-12 dark:text-white dark:bg-gray-800 dark:border-gray-700 dark:placeholder:text-gray-400"
+                    {...signupForm.register("phoneNumber")}
+                  />
+                  {signupForm.formState.errors.phoneNumber && (
+                    <p className="text-sm text-red-500 dark:text-red-400">
+                      {signupForm.formState.errors.phoneNumber.message}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground dark:text-gray-400">
+                    We'll use this for account security and important notifications
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="region" className="text-sm font-medium flex items-center gap-2 text-foreground">
+                    <Globe className="h-4 w-4" />
+                    Region & Currency *
                   </Label>
                   <Select disabled={isLoading} onValueChange={(value) => signupForm.setValue("region", value)}>
-                    <SelectTrigger className="h-12">
+                    <SelectTrigger className="h-12 dark:text-white dark:bg-gray-800 dark:border-gray-700">
                       <SelectValue placeholder="Select your region" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="np">Nepal (NPR)</SelectItem>
-                      <SelectItem value="us">United States (USD)</SelectItem>
-                      <SelectItem value="eu">Europe (EUR)</SelectItem>
-                      <SelectItem value="uk">United Kingdom (GBP)</SelectItem>
-                      <SelectItem value="ca">Canada (CAD)</SelectItem>
-                      <SelectItem value="au">Australia (AUD)</SelectItem>
-                      <SelectItem value="jp">Japan (JPY)</SelectItem>
-                      <SelectItem value="in">India (INR)</SelectItem>
+                      <SelectItem value="np">🇳🇵 Nepal (NPR)</SelectItem>
+                      <SelectItem value="us">🇺🇸 United States (USD)</SelectItem>
+                      <SelectItem value="eu">🇪🇺 Europe (EUR)</SelectItem>
+                      <SelectItem value="uk">🇬🇧 United Kingdom (GBP)</SelectItem>
+                      <SelectItem value="ca">🇨🇦 Canada (CAD)</SelectItem>
+                      <SelectItem value="au">🇦🇺 Australia (AUD)</SelectItem>
+                      <SelectItem value="jp">🇯🇵 Japan (JPY)</SelectItem>
+                      <SelectItem value="in">🇮🇳 India (INR)</SelectItem>
                     </SelectContent>
                   </Select>
                   {signupForm.formState.errors.region && (
-                    <p className="text-sm text-red-500">{signupForm.formState.errors.region.message}</p>
+                    <p className="text-sm text-red-500 dark:text-red-400">
+                      {signupForm.formState.errors.region.message}
+                    </p>
                   )}
+                  <p className="text-xs text-muted-foreground dark:text-gray-400">
+                    This helps us show amounts in your local currency
+                  </p>
                 </div>
 
                 <Button disabled={isLoading} type="submit" className="w-full h-12 text-base">
@@ -626,7 +676,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
               </form>
             )}
 
-            <div className="text-center text-sm">
+            <div className="text-center text-sm text-foreground dark:text-gray-300">
               {mode === "login" ? (
                 <div>
                   Don't have an account?{" "}
@@ -651,7 +701,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
             </div>
 
             {returnUrl?.includes("rukman.com.np") && (
-              <div className="text-center text-xs text-muted-foreground">
+              <div className="text-center text-xs text-muted-foreground dark:text-gray-400">
                 <a href={returnUrl} className="text-primary hover:underline">
                   ← Back to Rukman Puri's Website
                 </a>
@@ -659,7 +709,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
             )}
 
             {mode === "signup" && (
-              <div className="text-center text-xs text-muted-foreground">
+              <div className="text-center text-xs text-muted-foreground dark:text-gray-400">
                 By creating an account, you agree to our Terms of Service and Privacy Policy.
               </div>
             )}

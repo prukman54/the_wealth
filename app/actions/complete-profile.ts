@@ -25,8 +25,11 @@ export async function completeProfile(data: CompleteProfileData) {
 
     console.log("📝 Completing profile for user:", user.email)
 
-    // Get user's name from metadata
+    // Get user's name from metadata or existing profile
     const userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "User"
+
+    // Check if user is admin
+    const isAdmin = user.email === "prukman54@gmail.com"
 
     // Update or insert user profile
     const { data: profileData, error: profileError } = await supabase
@@ -34,11 +37,10 @@ export async function completeProfile(data: CompleteProfileData) {
       .upsert({
         id: user.id,
         email: user.email,
-        name: userName,
+        full_name: userName,
         phone_number: data.phoneNumber,
         region: data.region,
-        role: "user",
-        profile_completed: true,
+        role: isAdmin ? "admin" : "user",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

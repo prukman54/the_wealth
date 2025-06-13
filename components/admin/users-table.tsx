@@ -38,30 +38,52 @@ export function AdminUsersTable() {
   async function fetchUsers() {
     try {
       setLoading(true)
+      console.log("Fetching users as admin...")
 
-      // Get all users
+      // Get all users with explicit admin RLS bypass
       const { data: usersData, error: usersError } = await supabase
         .from("users")
         .select("*")
         .order("created_at", { ascending: false })
 
       if (usersError) {
+        console.error("Error fetching users:", usersError)
         throw usersError
       }
 
-      if (usersData) {
+      console.log(`Found ${usersData?.length || 0} users`)
+
+      if (usersData && usersData.length > 0) {
         // Calculate financial totals for each user
         const usersWithFinancials = await Promise.all(
           usersData.map(async (user) => {
-            // Get total income
-            const { data: incomeData } = await supabase.from("income").select("amount").eq("user_id", user.id)
+            console.log(`Fetching financial data for user: ${user.id}`)
+
+            // Get total income with explicit logging
+            const { data: incomeData, error: incomeError } = await supabase
+              .from("income")
+              .select("amount")
+              .eq("user_id", user.id)
+
+            if (incomeError) {
+              console.error(`Error fetching income for user ${user.id}:`, incomeError)
+            }
 
             const totalIncome = incomeData?.reduce((sum, item) => sum + item.amount, 0) || 0
+            console.log(`User ${user.id} total income: ${totalIncome}`)
 
-            // Get total expenses
-            const { data: expenseData } = await supabase.from("expenses").select("amount").eq("user_id", user.id)
+            // Get total expenses with explicit logging
+            const { data: expenseData, error: expenseError } = await supabase
+              .from("expenses")
+              .select("amount")
+              .eq("user_id", user.id)
+
+            if (expenseError) {
+              console.error(`Error fetching expenses for user ${user.id}:`, expenseError)
+            }
 
             const totalExpenses = expenseData?.reduce((sum, item) => sum + item.amount, 0) || 0
+            console.log(`User ${user.id} total expenses: ${totalExpenses}`)
 
             // Calculate savings
             const totalSavings = totalIncome - totalExpenses
@@ -76,8 +98,12 @@ export function AdminUsersTable() {
         )
 
         setUsers(usersWithFinancials)
+      } else {
+        console.log("No users found or empty result")
+        setUsers([])
       }
     } catch (error: any) {
+      console.error("Error in fetchUsers:", error)
       toast({
         title: "Error fetching users",
         description: error.message,
