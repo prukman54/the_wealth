@@ -31,6 +31,15 @@ export async function completeProfile(data: CompleteProfileData) {
     // Check if user is admin
     const isAdmin = user.email === "prukman54@gmail.com"
 
+    // Check if user already exists
+    const { data: existingUser, error: fetchError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", user.id)
+      .single()
+
+    console.log("🔍 Existing user check:", { exists: !!existingUser, error: fetchError?.message })
+
     // Update or insert user profile
     const { data: profileData, error: profileError } = await supabase
       .from("users")
@@ -41,8 +50,10 @@ export async function completeProfile(data: CompleteProfileData) {
         phone_number: data.phoneNumber,
         region: data.region,
         role: isAdmin ? "admin" : "user",
-        created_at: new Date().toISOString(),
+        profile_completed: true,
         updated_at: new Date().toISOString(),
+        // Only set created_at if this is a new record
+        ...(existingUser ? {} : { created_at: new Date().toISOString() }),
       })
       .select()
 

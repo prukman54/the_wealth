@@ -27,6 +27,7 @@ export function CompleteProfileForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [user, setUser] = useState<any>(null)
   const [isLoadingUser, setIsLoadingUser] = useState(true)
+  const [existingProfile, setExistingProfile] = useState<any>(null)
   const router = useRouter()
   const { toast } = useToast()
   const supabase = createClientComponentClient()
@@ -46,6 +47,12 @@ export function CompleteProfileForm() {
           data: { user },
         } = await supabase.auth.getUser()
 
+        if (!user) {
+          console.error("No user found in session")
+          router.push("/auth/login")
+          return
+        }
+
         console.log("👤 Complete Profile - User data:", {
           email: user?.email,
           name: user?.user_metadata?.full_name || user?.user_metadata?.name,
@@ -53,6 +60,31 @@ export function CompleteProfileForm() {
         })
 
         setUser(user)
+
+        // Check if user already has a profile
+        const { data: profile, error: profileError } = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", user.id)
+          .single()
+
+        if (profile) {
+          console.log("📋 Existing profile found:", {
+            hasPhone: !!profile.phone_number,
+            hasRegion: !!profile.region,
+          })
+
+          setExistingProfile(profile)
+
+          // Pre-fill form with existing data if available
+          if (profile.phone_number) {
+            form.setValue("phoneNumber", profile.phone_number)
+          }
+
+          if (profile.region) {
+            form.setValue("region", profile.region)
+          }
+        }
       } catch (error) {
         console.error("Error getting user:", error)
         router.push("/auth/login")
@@ -61,7 +93,7 @@ export function CompleteProfileForm() {
       }
     }
     getUser()
-  }, [supabase, router])
+  }, [supabase, router, form])
 
   async function onSubmit(data: ProfileFormValues) {
     if (!user) {
@@ -120,7 +152,7 @@ export function CompleteProfileForm() {
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading your profile...</p>
+          <p className="text-muted-foreground dark:text-gray-300">Loading your profile...</p>
         </div>
       </div>
     )
@@ -132,7 +164,7 @@ export function CompleteProfileForm() {
         <Card className="w-full max-w-md">
           <CardContent className="pt-6">
             <div className="text-center">
-              <p className="text-muted-foreground">Session expired. Redirecting to login...</p>
+              <p className="text-muted-foreground dark:text-gray-300">Session expired. Redirecting to login...</p>
             </div>
           </CardContent>
         </Card>
@@ -149,21 +181,29 @@ export function CompleteProfileForm() {
         {/* Progress indicator */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2 mb-2">
-            <Sparkles className="h-5 w-5 text-blue-600" />
-            <h1 className="text-2xl font-bold">Almost there!</h1>
+            <Sparkles className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <h1 className="text-2xl font-bold text-foreground dark:text-white">
+              {existingProfile ? "Update Your Profile" : "Almost there!"}
+            </h1>
           </div>
-          <p className="text-muted-foreground">We just need a little more info to complete your profile</p>
+          <p className="text-muted-foreground dark:text-gray-300">
+            {existingProfile
+              ? "Please update your profile information"
+              : "We just need a little more info to complete your profile"}
+          </p>
           <Progress value={75} className="w-full" />
-          <p className="text-xs text-muted-foreground">Step 2 of 2</p>
+          <p className="text-xs text-muted-foreground dark:text-gray-400">Step 2 of 2</p>
         </div>
 
-        <Card className="border-0 shadow-xl">
+        <Card className="border-0 shadow-xl dark:bg-gray-800 dark:border-gray-700">
           <CardHeader className="text-center pb-4">
             <div className="mx-auto w-12 h-12 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mb-4">
               <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
             </div>
-            <CardTitle className="text-xl">Complete Your Profile</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-xl dark:text-white">
+              {existingProfile ? "Update Profile" : "Complete Your Profile"}
+            </CardTitle>
+            <CardDescription className="dark:text-gray-300">
               {isAdmin ? (
                 <>Welcome Admin {userName}! Please complete your profile to access the admin dashboard.</>
               ) : (
@@ -174,29 +214,29 @@ export function CompleteProfileForm() {
           <CardContent>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               {/* Account info display */}
-              <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+              <div className="bg-muted/50 dark:bg-gray-700/50 rounded-lg p-4 space-y-3">
                 <div className="flex items-center gap-3">
-                  <User className="h-4 w-4 text-muted-foreground" />
+                  <User className="h-4 w-4 text-muted-foreground dark:text-gray-300" />
                   <div>
-                    <p className="text-sm font-medium">{userName}</p>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm font-medium dark:text-white">{userName}</p>
+                    <p className="text-xs text-muted-foreground dark:text-gray-400">
                       {user.app_metadata?.provider === "google" ? "From Google Account" : "Email Account"}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
+                  <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
                   <div>
-                    <p className="text-sm font-medium">{user.email}</p>
-                    <p className="text-xs text-muted-foreground">Email verified</p>
+                    <p className="text-sm font-medium dark:text-white">{user.email}</p>
+                    <p className="text-xs text-muted-foreground dark:text-gray-400">Email verified</p>
                   </div>
                 </div>
                 {isAdmin && (
                   <div className="flex items-center gap-3">
-                    <CheckCircle className="h-4 w-4 text-blue-600" />
+                    <CheckCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     <div>
-                      <p className="text-sm font-medium text-blue-600">Admin Account</p>
-                      <p className="text-xs text-muted-foreground">Administrative privileges</p>
+                      <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Admin Account</p>
+                      <p className="text-xs text-muted-foreground dark:text-gray-400">Administrative privileges</p>
                     </div>
                   </div>
                 )}
@@ -204,7 +244,7 @@ export function CompleteProfileForm() {
 
               {/* Phone number input */}
               <div className="space-y-2">
-                <Label htmlFor="phoneNumber" className="flex items-center gap-2">
+                <Label htmlFor="phoneNumber" className="flex items-center gap-2 dark:text-white">
                   <Phone className="h-4 w-4" />
                   Phone Number *
                 </Label>
@@ -213,29 +253,33 @@ export function CompleteProfileForm() {
                   placeholder="+977-9800000000"
                   disabled={isLoading}
                   {...form.register("phoneNumber")}
-                  className="h-12"
+                  className="h-12 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder:text-gray-400"
                 />
                 {form.formState.errors.phoneNumber && (
-                  <p className="text-sm text-red-500 flex items-center gap-1">
+                  <p className="text-sm text-red-500 dark:text-red-400 flex items-center gap-1">
                     {form.formState.errors.phoneNumber.message}
                   </p>
                 )}
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground dark:text-gray-400">
                   We'll use this for account security and important notifications
                 </p>
               </div>
 
               {/* Region selection */}
               <div className="space-y-2">
-                <Label htmlFor="region" className="flex items-center gap-2">
+                <Label htmlFor="region" className="flex items-center gap-2 dark:text-white">
                   <Globe className="h-4 w-4" />
                   Region & Currency *
                 </Label>
-                <Select disabled={isLoading} onValueChange={(value) => form.setValue("region", value)}>
-                  <SelectTrigger className="h-12">
+                <Select
+                  disabled={isLoading}
+                  onValueChange={(value) => form.setValue("region", value)}
+                  defaultValue={form.getValues("region")}
+                >
+                  <SelectTrigger className="h-12 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
                     <SelectValue placeholder="Select your region" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="dark:bg-gray-800 dark:border-gray-700">
                     <SelectItem value="np">🇳🇵 Nepal (NPR)</SelectItem>
                     <SelectItem value="us">🇺🇸 United States (USD)</SelectItem>
                     <SelectItem value="eu">🇪🇺 Europe (EUR)</SelectItem>
@@ -247,21 +291,31 @@ export function CompleteProfileForm() {
                   </SelectContent>
                 </Select>
                 {form.formState.errors.region && (
-                  <p className="text-sm text-red-500 flex items-center gap-1">{form.formState.errors.region.message}</p>
+                  <p className="text-sm text-red-500 dark:text-red-400 flex items-center gap-1">
+                    {form.formState.errors.region.message}
+                  </p>
                 )}
-                <p className="text-xs text-muted-foreground">This helps us show amounts in your local currency</p>
+                <p className="text-xs text-muted-foreground dark:text-gray-400">
+                  This helps us show amounts in your local currency
+                </p>
               </div>
 
-              <Button disabled={isLoading} type="submit" className="w-full h-12 text-base">
+              <Button disabled={isLoading} type="submit" className="w-full h-12 text-base dark:text-white">
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isAdmin ? "Complete Profile & Access Admin Dashboard" : "Complete Profile & Continue"}
+                {existingProfile
+                  ? isAdmin
+                    ? "Update Profile & Access Admin Dashboard"
+                    : "Update Profile & Continue"
+                  : isAdmin
+                    ? "Complete Profile & Access Admin Dashboard"
+                    : "Complete Profile & Continue"}
               </Button>
             </form>
           </CardContent>
         </Card>
 
         <div className="text-center">
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground dark:text-gray-400">
             By continuing, you agree to our Terms of Service and Privacy Policy
           </p>
         </div>

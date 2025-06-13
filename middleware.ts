@@ -36,13 +36,24 @@ export async function middleware(req: NextRequest) {
       }
 
       // Check admin role
-      const { data: userData } = await supabase
+      const { data: userData, error: userError } = await supabase
         .from("users")
         .select("role, phone_number, region")
         .eq("id", session.user.id)
         .single()
 
+      console.log("🔍 Admin check:", { userData, hasError: !!userError })
+
+      if (userError) {
+        // User doesn't exist in the database yet
+        console.log("⚠️ Admin user not found in database, redirecting to complete profile")
+        const redirectUrl = req.nextUrl.clone()
+        redirectUrl.pathname = "/auth/complete-profile"
+        return NextResponse.redirect(redirectUrl)
+      }
+
       if (userData?.role !== "admin") {
+        console.log("⛔ Non-admin trying to access admin area")
         const redirectUrl = req.nextUrl.clone()
         redirectUrl.pathname = "/dashboard"
         return NextResponse.redirect(redirectUrl)
@@ -67,14 +78,21 @@ export async function middleware(req: NextRequest) {
       }
 
       // Get user data to check profile completion
-      const { data: userData } = await supabase
+      const { data: userData, error: userError } = await supabase
         .from("users")
         .select("phone_number, region, role")
         .eq("id", session.user.id)
         .single()
 
-      // Check profile completion for ALL users (including admin when accessing dashboard)
-      if (!userData?.phone_number || !userData?.region) {
+      console.log("🔍 User profile check:", {
+        userData,
+        hasError: !!userError,
+        hasPhone: userData?.phone_number,
+        hasRegion: userData?.region,
+      })
+
+      // If user doesn't exist in database or profile is incomplete
+      if (userError || !userData?.phone_number || !userData?.region) {
         console.log("🔄 Middleware: Incomplete profile detected, redirecting to complete profile")
         const redirectUrl = req.nextUrl.clone()
         redirectUrl.pathname = "/auth/complete-profile"
@@ -89,16 +107,18 @@ export async function middleware(req: NextRequest) {
       !req.nextUrl.pathname.includes("/callback") &&
       !req.nextUrl.pathname.includes("/complete-profile")
     ) {
-      const { data: userData } = await supabase
+      const { data: userData, error: userError } = await supabase
         .from("users")
         .select("role, phone_number, region")
         .eq("id", session.user.id)
         .single()
 
+      console.log("🔍 Auth redirect check:", { userData, hasError: !!userError })
+
       const redirectUrl = req.nextUrl.clone()
 
-      // Check if profile is incomplete
-      if (!userData?.phone_number || !userData?.region) {
+      // If user doesn't exist in database or profile is incomplete
+      if (userError || !userData?.phone_number || !userData?.region) {
         redirectUrl.pathname = "/auth/complete-profile"
         return NextResponse.redirect(redirectUrl)
       }
