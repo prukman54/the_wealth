@@ -12,9 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { Loader2, CheckCircle, User, Phone, Globe, Sparkles } from "lucide-react"
+import { Loader2, CheckCircle, User, Phone, Globe, Sparkles, AlertCircle } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
-import { completeProfile } from "@/app/actions/complete-profile"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 const profileSchema = z.object({
   phoneNumber: z.string().min(10, { message: "Please enter a valid phone number (minimum 10 digits)" }),
@@ -28,6 +28,7 @@ export function CompleteProfileForm() {
   const [user, setUser] = useState<any>(null)
   const [isLoadingUser, setIsLoadingUser] = useState(true)
   const [existingProfile, setExistingProfile] = useState<any>(null)
+  const [debugInfo, setDebugInfo] = useState<string>("")
   const router = useRouter()
   const { toast } = useToast()
   const supabase = createClientComponentClient()
@@ -43,38 +44,49 @@ export function CompleteProfileForm() {
   useEffect(() => {
     async function getUser() {
       try {
+        console.log("🔍 Getting user session...")
         const {
           data: { user },
         } = await supabase.auth.getUser()
 
         if (!user) {
-          console.error("No user found in session")
+          console.error("❌ No user found in session")
+          setDebugInfo("No user session found")
           router.push("/auth/login")
           return
         }
 
-        console.log("👤 Complete Profile - User data:", {
-          email: user?.email,
-          name: user?.user_metadata?.full_name || user?.user_metadata?.name,
-          provider: user?.app_metadata?.provider,
+        console.log("✅ User found:", {
+          email: user.email,
+          id: user.id,
+          provider: user.app_metadata?.provider,
         })
 
         setUser(user)
 
         // Check if user already has a profile
+        console.log("🔍 Checking existing profile...")
         const { data: profile, error: profileError } = await supabase
           .from("users")
           .select("*")
           .eq("id", user.id)
           .single()
 
+        console.log("📋 Profile check result:", {
+          profile,
+          error: profileError,
+          errorCode: profileError?.code,
+        })
+
         if (profile) {
-          console.log("📋 Existing profile found:", {
+          console.log("✅ Existing profile found:", {
             hasPhone: !!profile.phone_number,
             hasRegion: !!profile.region,
+            role: profile.role,
           })
 
           setExistingProfile(profile)
+          setDebugInfo(`Found profile: Phone=${!!profile.phone_number}, Region=${!!profile.region}`)
 
           // Pre-fill form with existing data if available
           if (profile.phone_number) {
@@ -84,9 +96,12 @@ export function CompleteProfileForm() {
           if (profile.region) {
             form.setValue("region", profile.region)
           }
+        } else {
+          setDebugInfo(`No profile found. Error: ${profileError?.message || "Unknown"}`)
         }
       } catch (error) {
-        console.error("Error getting user:", error)
+        console.error("💥 Error getting user:", error)
+        setDebugInfo(`Error: ${error}`)
         router.push("/auth/login")
       } finally {
         setIsLoadingUser(false)
@@ -106,34 +121,58 @@ export function CompleteProfileForm() {
     }
 
     setIsLoading(true)
-    console.log("📝 Completing profile with data:", data)
+    console.log("📝 Starting profile completion:", data)
 
     try {
-      const result = await completeProfile({
-        phoneNumber: data.phoneNumber,
+      // Direct database update instead of server action for debugging
+      const userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "User"
+      const isAdmin = user.email === "prukman54@gmail.com"
+
+      console.log("💾 Updating profile directly:", {
+        id: user.id,
+        email: user.email,
+        full_name: userName,
+        phone_number: data.phoneNumber,
         region: data.region,
+        role: isAdmin ? "admin" : "user",
       })
 
-      if (result.error) {
-        throw new Error(result.error)
+      const { data: profileData, error: profileError } = await supabase
+        .from("users")
+        .upsert({
+          id: user.id,
+          email: user.email,
+          full_name: userName,
+          phone_number: data.phoneNumber,
+          region: data.region,
+          role: isAdmin ? "admin" : "user",
+          updated_at: new Date().toISOString(),
+          ...(existingProfile ? {} : { created_at: new Date().toISOString() }),
+        })
+        .select()
+
+      if (profileError) {
+        console.error("❌ Profile update error:", profileError)
+        throw new Error(`Database error: ${profileError.message}`)
       }
 
-      console.log("✅ Profile completed successfully")
+      console.log("✅ Profile updated successfully:", profileData)
 
       toast({
         title: "Profile completed! 🎉",
-        description: "Welcome to The Wealth platform. Let's start building your financial future!",
+        description: "Welcome to The Wealth platform!",
       })
 
-      // Check if user is admin
-      const isAdmin = user.email === "prukman54@gmail.com"
+      // Force a small delay to ensure database is updated
+      await new Promise((resolve) => setTimeout(resolve, 1000))
 
+      // Redirect based on role
       if (isAdmin) {
-        console.log("👑 Admin user - redirecting to admin dashboard")
-        router.push("/admin/dashboard")
+        console.log("👑 Redirecting admin to admin dashboard")
+        window.location.href = "/admin/dashboard"
       } else {
-        console.log("👤 Regular user - redirecting to dashboard")
-        router.push("/dashboard?welcome=true&new=true")
+        console.log("👤 Redirecting user to dashboard")
+        window.location.href = "/dashboard"
       }
     } catch (error: any) {
       console.error("❌ Profile completion error:", error)
@@ -142,6 +181,7 @@ export function CompleteProfileForm() {
         description: error.message || "Please try again",
         variant: "destructive",
       })
+      setDebugInfo(`Update error: ${error.message}`)
     } finally {
       setIsLoading(false)
     }
@@ -178,21 +218,26 @@ export function CompleteProfileForm() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
+        {/* Debug info */}
+        {debugInfo && (
+          <Alert className="dark:bg-gray-800 dark:border-gray-700">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="dark:text-gray-300">Debug: {debugInfo}</AlertDescription>
+          </Alert>
+        )}
+
         {/* Progress indicator */}
         <div className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Sparkles className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             <h1 className="text-2xl font-bold text-foreground dark:text-white">
-              {existingProfile ? "Update Your Profile" : "Almost there!"}
+              {existingProfile ? "Update Your Profile" : "Complete Your Profile"}
             </h1>
           </div>
           <p className="text-muted-foreground dark:text-gray-300">
-            {existingProfile
-              ? "Please update your profile information"
-              : "We just need a little more info to complete your profile"}
+            We need your phone number and region to complete your profile
           </p>
           <Progress value={75} className="w-full" />
-          <p className="text-xs text-muted-foreground dark:text-gray-400">Step 2 of 2</p>
         </div>
 
         <Card className="border-0 shadow-xl dark:bg-gray-800 dark:border-gray-700">
@@ -200,9 +245,7 @@ export function CompleteProfileForm() {
             <div className="mx-auto w-12 h-12 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mb-4">
               <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
             </div>
-            <CardTitle className="text-xl dark:text-white">
-              {existingProfile ? "Update Profile" : "Complete Your Profile"}
-            </CardTitle>
+            <CardTitle className="text-xl dark:text-white">Complete Your Profile</CardTitle>
             <CardDescription className="dark:text-gray-300">
               {isAdmin ? (
                 <>Welcome Admin {userName}! Please complete your profile to access the admin dashboard.</>
@@ -302,13 +345,7 @@ export function CompleteProfileForm() {
 
               <Button disabled={isLoading} type="submit" className="w-full h-12 text-base dark:text-white">
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {existingProfile
-                  ? isAdmin
-                    ? "Update Profile & Access Admin Dashboard"
-                    : "Update Profile & Continue"
-                  : isAdmin
-                    ? "Complete Profile & Access Admin Dashboard"
-                    : "Complete Profile & Continue"}
+                {isAdmin ? "Complete Profile & Access Admin Dashboard" : "Complete Profile & Continue"}
               </Button>
             </form>
           </CardContent>
