@@ -20,12 +20,23 @@ export async function GET(request: NextRequest) {
     origin: requestUrl.origin,
   })
 
-  // Handle OAuth errors
+  // Handle OAuth errors - but only for actual OAuth flows
   if (error) {
-    console.error("❌ OAuth Error:", error)
-    const redirectUrl = new URL("/auth/login", requestUrl.origin)
-    redirectUrl.searchParams.set("error", "oauth_error")
-    return NextResponse.redirect(redirectUrl)
+    console.error("❌ Auth Error:", error)
+
+    // Only treat as OAuth error if this was actually an OAuth flow
+    const isOAuthFlow = requestUrl.searchParams.get("provider") || requestUrl.searchParams.get("code") // OAuth flows have authorization codes
+
+    if (isOAuthFlow) {
+      const redirectUrl = new URL("/auth/login", requestUrl.origin)
+      redirectUrl.searchParams.set("error", "oauth_error")
+      return NextResponse.redirect(redirectUrl)
+    } else {
+      // For email verification errors, redirect to login with different error
+      const redirectUrl = new URL("/auth/login", requestUrl.origin)
+      redirectUrl.searchParams.set("error", "verification_error")
+      return NextResponse.redirect(redirectUrl)
+    }
   }
 
   // Handle missing code

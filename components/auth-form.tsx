@@ -341,6 +341,7 @@ function AuthFormContent({ mode }: AuthFormProps) {
       user_error: "Unable to retrieve user information. Please try again.",
       unexpected_error: "An unexpected error occurred. Please try again.",
       no_code: "Authentication was incomplete. Please try again.",
+      verification_error: "Email verification failed. Please try signing up again or contact support.",
     }
     return messages[errorCode as keyof typeof messages] || "An error occurred. Please try again."
   }
