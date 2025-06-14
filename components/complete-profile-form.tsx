@@ -137,26 +137,29 @@ export function CompleteProfileForm() {
         role: isAdmin ? "admin" : "user",
       })
 
-      const { data: profileData, error: profileError } = await supabase
-        .from("users")
-        .upsert({
-          id: user.id,
-          email: user.email,
-          full_name: userName,
-          phone_number: data.phoneNumber,
-          region: data.region,
-          role: isAdmin ? "admin" : "user",
-          updated_at: new Date().toISOString(),
-          ...(existingProfile ? {} : { created_at: new Date().toISOString() }),
-        })
-        .select()
+      // Create the profile data without updated_at
+      const profileData = {
+        id: user.id,
+        email: user.email,
+        full_name: userName,
+        phone_number: data.phoneNumber,
+        region: data.region,
+        role: isAdmin ? "admin" : "user",
+      }
+
+      // Add created_at only if this is a new profile
+      if (!existingProfile) {
+        profileData.created_at = new Date().toISOString()
+      }
+
+      const { data: upsertResult, error: profileError } = await supabase.from("users").upsert(profileData).select()
 
       if (profileError) {
         console.error("❌ Profile update error:", profileError)
         throw new Error(`Database error: ${profileError.message}`)
       }
 
-      console.log("✅ Profile updated successfully:", profileData)
+      console.log("✅ Profile updated successfully:", upsertResult)
 
       toast({
         title: "Profile completed! 🎉",
